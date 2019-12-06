@@ -32,10 +32,10 @@ import (
 )
 
 // attachValidator attaches a Validator to the given config
-func attachValidator(config *ScoringConfig) error {
-	v, err := gcv.NewValidator(
-		gcv.PolicyPath(filepath.Join(config.PolicyPath, "policies")),
-		gcv.PolicyLibraryDir(filepath.Join(config.PolicyPath, "lib")),
+func attachValidator(ctx context.Context, config *ScoringConfig) error {
+	v, err := gcv.NewValidator(ctx.Done(),
+		[]string{filepath.Join(config.PolicyPath, "policies")},
+		filepath.Join(config.PolicyPath, "lib"),
 	)
 	config.validator = v
 	return err
@@ -45,6 +45,9 @@ func addDataFromReader(config *ScoringConfig, reader io.Reader) error {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		pbAsset, err := getAssetFromJSON(scanner.Bytes())
+		if err != nil {
+			return err
+		}
 		pbAssets := []*validator.Asset{pbAsset}
 		err = config.validator.AddData(&validator.AddDataRequest{
 			Assets: pbAssets,
