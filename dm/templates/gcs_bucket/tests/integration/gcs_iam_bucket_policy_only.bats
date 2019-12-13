@@ -15,14 +15,12 @@ fi
 # envsubst requires all variables used in the example/config to be exported.
 if [[ -e "${RANDOM_FILE}" ]]; then
     export RAND=$(cat "${RANDOM_FILE}")
-    DEPLOYMENT_NAME="${CLOUD_FOUNDATION_PROJECT_ID}-${TEST_NAME}-${RAND}"
-    # Replace underscores with dashes in the deployment name.
+    DEPLOYMENT_NAME="dm-${TEST_NAME}-${RAND}"
+    # Replace underscores in the deployment name with dashes.
     DEPLOYMENT_NAME=${DEPLOYMENT_NAME//_/-}
     CONFIG=".${DEPLOYMENT_NAME}.yaml"
-    # Test specific variables.
-    export CERT_NAME="test-certificate-${RAND}"
-    export CERT_DESCRIPTION="test certificate description"
-    export CERT_EXTRACT="RXhhbXBsZSBPcmcuMRQwEgYDVQQDDAtleGFtcGxlLmNvbTAeFw0xODEwMTEyMDEy"
+    # Test specific variables:
+    export BUCKET_NAME="test-bucket-${RAND}"
 fi
 
 ########## HELPER FUNCTIONS ##########
@@ -50,42 +48,32 @@ function teardown() {
     # Global teardown; executed once per test file.
     if [[ "$BATS_TEST_NUMBER" -eq "${#BATS_TEST_NAMES[@]}" ]]; then
         delete_config
+        rm -f "${RANDOM_FILE}"
     fi
 
     # Per-test teardown steps.
 }
 
+########## TESTS ##########
 
 @test "Creating deployment ${DEPLOYMENT_NAME} from ${CONFIG}" {
-    run gcloud deployment-manager deployments create "${DEPLOYMENT_NAME}" \
-        --config ${CONFIG} \
-        --project "${CLOUD_FOUNDATION_PROJECT_ID}"
-        
-    echo "Status: $status"
-    echo "Output: $output"
-
+    gcloud deployment-manager deployments create "${DEPLOYMENT_NAME}" \
+        --config "${CONFIG}" --project "${CLOUD_FOUNDATION_PROJECT_ID}"
     [[ "$status" -eq 0 ]]
 }
 
-@test "Verifying certificate" {
-    run gcloud compute ssl-certificates describe "${CERT_NAME}" \
-        --project "${CLOUD_FOUNDATION_PROJECT_ID}"
-        
-    echo "Status: $status"
-    echo "Output: $output"
-
+@test "BucketPolicyOnly setting on ${BUCKET_NAME} is ENABLED " {
+    run gsutil bucketpolicyonly get "gs://${BUCKET_NAME}/"
     [[ "$status" -eq 0 ]]
-    [[ "$output" =~ "description: ${CERT_DESCRIPTION}" ]]
-    [[ "$output" =~ "${CERT_EXTRACT}" ]]
+    [[ "$output" =~ "Enabled: True" ]]
 }
 
-@test "Deleting deployment" {
-    run gcloud deployment-manager deployments delete "${DEPLOYMENT_NAME}" -q \
-        --project "${CLOUD_FOUNDATION_PROJECT_ID}"
-        
-    echo "Status: $status"
-    echo "Output: $output"
-    
+@test "Deleting deployment ${DEPLOYMENT_NAME}" {
+    gcloud deployment-manager deployments delete "${DEPLOYMENT_NAME}" \
+        --project "${CLOUD_FOUNDATION_PROJECT_ID}" -q
     [[ "$status" -eq 0 ]]
-}
 
+    run gsutil ls
+    [[ "$status" -eq 0 ]]
+    [[ ! "$output" =~ "gs://${BUCKET_NAME}/" ]]
+}
